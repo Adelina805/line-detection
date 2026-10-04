@@ -23,7 +23,12 @@ LS_MIN_POINTS = 40
 LS_MAX_LINES = 3
 
 # Display
-DISPLAY_WIDTH = 480
+DISPLAY_WIDTH = 800
+FONT_SCALE = 1.2
+FONT_THICKNESS = 3
+TEXT_MARGIN = 15
+TEXT_PADDING = 10
+WINDOW_NAME = "Real-Time Line Detection"
 
 
 # ============================================================
@@ -77,6 +82,9 @@ def detect_hough(frame):
         maxLineGap=HOUGH_MAX_LINE_GAP
     )
 
+    # Scale thickness so lines stay visible after downsizing.
+    thickness = max(2, frame.shape[1] // 300)
+
     if lines is not None:
 
         lines = np.asarray(lines).reshape(-1, 4)
@@ -88,7 +96,7 @@ def detect_hough(frame):
                 (int(x1), int(y1)),
                 (int(x2), int(y2)),
                 (0, 255, 0),
-                2
+                thickness
             )
 
     return result
@@ -222,7 +230,7 @@ def detect_least_squares(frame):
             (x1, y1),
             (x2, y2),
             (255, 0, 0),
-            3
+            max(3, width // 250)
         )
 
     # Draw the boundary of the fitting region.
@@ -231,7 +239,7 @@ def detect_least_squares(frame):
         (0, region_top),
         (width, region_top),
         (255, 255, 0),
-        1
+        max(1, width // 600)
     )
 
     return result
@@ -241,6 +249,45 @@ def detect_least_squares(frame):
 # DISPLAY HELPERS
 # ============================================================
 
+def draw_text_box(image, text, color, align_right=False):
+    """
+    Draw text on a filled dark box in a top corner of the image.
+    """
+
+    (text_width, text_height), baseline = cv2.getTextSize(
+        text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        FONT_SCALE,
+        FONT_THICKNESS
+    )
+
+    if align_right:
+        x = image.shape[1] - text_width - TEXT_MARGIN - TEXT_PADDING
+    else:
+        x = TEXT_MARGIN + TEXT_PADDING
+
+    y = TEXT_MARGIN + TEXT_PADDING + text_height
+
+    cv2.rectangle(
+        image,
+        (x - TEXT_PADDING, y - text_height - TEXT_PADDING),
+        (x + text_width + TEXT_PADDING, y + baseline + TEXT_PADDING),
+        (0, 0, 0),
+        cv2.FILLED
+    )
+
+    cv2.putText(
+        image,
+        text,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        FONT_SCALE,
+        color,
+        FONT_THICKNESS,
+        cv2.LINE_AA
+    )
+
+
 def add_label(image, label):
     """
     Add a label to the top-left corner.
@@ -248,15 +295,7 @@ def add_label(image, label):
 
     result = image.copy()
 
-    cv2.putText(
-        result,
-        label,
-        (20, 35),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
+    draw_text_box(result, label, (0, 255, 0))
 
     return result
 
@@ -268,28 +307,11 @@ def add_fps(image, fps):
 
     result = image.copy()
 
-    text = f"FPS: {fps:.1f}"
-
-    text_size, _ = cv2.getTextSize(
-        text,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        2
-    )
-
-    text_width = text_size[0]
-
-    x = result.shape[1] - text_width - 20
-    y = 35
-
-    cv2.putText(
+    draw_text_box(
         result,
-        text,
-        (x, y),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
+        f"FPS: {fps:.1f}",
         (0, 255, 255),
-        2
+        align_right=True
     )
 
     return result
@@ -324,6 +346,14 @@ def main():
 
     print("Camera opened successfully.")
     print("Press Q to quit.")
+
+    # Resizable window, initially sized to fit the 2 x 2 grid.
+    frame_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 16
+    frame_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 9
+    panel_height = int(frame_height * (DISPLAY_WIDTH / frame_width))
+
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_NAME, 2 * DISPLAY_WIDTH, 2 * panel_height)
 
     # Used to calculate FPS.
     previous_time = time.perf_counter()
@@ -378,11 +408,23 @@ def main():
                 )
 
         # ----------------------------------------------------
-        # Add labels
+        # Resize
+        # ----------------------------------------------------
+
+        original_display = resize_frame(frame)
+
+        canny_display = resize_frame(canny)
+
+        hough_display = resize_frame(hough)
+
+        least_squares_display = resize_frame(least_squares)
+
+        # ----------------------------------------------------
+        # Add labels (after resizing so text stays full size)
         # ----------------------------------------------------
 
         original_display = add_label(
-            frame,
+            original_display,
             "Original"
         )
 
@@ -393,38 +435,18 @@ def main():
         )
 
         canny_display = add_label(
-            canny,
+            canny_display,
             "Canny"
         )
 
         hough_display = add_label(
-            hough,
+            hough_display,
             "Hough"
         )
 
         least_squares_display = add_label(
-            least_squares,
+            least_squares_display,
             "Least Squares"
-        )
-
-        # ----------------------------------------------------
-        # Resize
-        # ----------------------------------------------------
-
-        original_display = resize_frame(
-            original_display
-        )
-
-        canny_display = resize_frame(
-            canny_display
-        )
-
-        hough_display = resize_frame(
-            hough_display
-        )
-
-        least_squares_display = resize_frame(
-            least_squares_display
         )
 
         # ----------------------------------------------------
@@ -457,7 +479,7 @@ def main():
         # ----------------------------------------------------
 
         cv2.imshow(
-            "Real-Time Line Detection",
+            WINDOW_NAME,
             display
         )
 
