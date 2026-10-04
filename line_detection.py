@@ -7,9 +7,17 @@ import time
 # PARAMETERS
 # ============================================================
 
-# Canny
+# # Canny -Sensitive
+# CANNY_LOW = 25
+# CANNY_HIGH = 75
+
+# Canny - Baseline
 CANNY_LOW = 50
 CANNY_HIGH = 150
+
+# # Canny - Strict
+# CANNY_LOW = 100
+# CANNY_HIGH = 200
 
 # Hough
 HOUGH_THRESHOLD = 50
