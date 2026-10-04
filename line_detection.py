@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import time
 
 
 # ============================================================
@@ -31,7 +32,7 @@ DISPLAY_WIDTH = 480
 
 def get_edges(frame):
     """
-    Convert a frame to grayscale and compute its Canny edges.
+    Convert a frame to grayscale and compute Canny edges.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -138,13 +139,12 @@ def detect_least_squares(frame):
     # Only use the lower portion of the frame.
     region_top = int(height * LS_REGION_TOP)
 
-    region_height = height - region_top
     region_width = width / LS_REGION_COUNT
 
     candidates = []
 
     # --------------------------------------------------------
-    # Divide the fitting region into vertical sections.
+    # Divide the fitting area into vertical regions
     # --------------------------------------------------------
 
     for i in range(LS_REGION_COUNT):
@@ -171,7 +171,7 @@ def detect_least_squares(frame):
             (x_coords, y_coords)
         )
 
-        # Fit a line
+        # Fit a least-squares line.
         a, b = fit_line(points)
 
         candidates.append(
@@ -183,7 +183,7 @@ def detect_least_squares(frame):
         )
 
     # --------------------------------------------------------
-    # Keep only the strongest candidate regions.
+    # Keep strongest candidate regions
     # --------------------------------------------------------
 
     candidates.sort(
@@ -194,7 +194,7 @@ def detect_least_squares(frame):
     candidates = candidates[:LS_MAX_LINES]
 
     # --------------------------------------------------------
-    # Draw fitted lines.
+    # Draw fitted lines
     # --------------------------------------------------------
 
     for candidate in candidates:
@@ -208,7 +208,7 @@ def detect_least_squares(frame):
         x1 = int(a * y1 + b)
         x2 = int(a * y2 + b)
 
-        # Skip lines that are far outside the image.
+        # Skip lines far outside the image.
         if (
             x1 < -width or
             x1 > 2 * width or
@@ -225,10 +225,7 @@ def detect_least_squares(frame):
             3
         )
 
-    # --------------------------------------------------------
-    # Draw the top boundary of the fitting region.
-    # --------------------------------------------------------
-
+    # Draw the boundary of the fitting region.
     cv2.line(
         result,
         (0, region_top),
@@ -258,6 +255,40 @@ def add_label(image, label):
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,
         (0, 255, 0),
+        2
+    )
+
+    return result
+
+
+def add_fps(image, fps):
+    """
+    Display the current smoothed FPS in the upper-right corner.
+    """
+
+    result = image.copy()
+
+    text = f"FPS: {fps:.1f}"
+
+    text_size, _ = cv2.getTextSize(
+        text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        2
+    )
+
+    text_width = text_size[0]
+
+    x = result.shape[1] - text_width - 20
+    y = 35
+
+    cv2.putText(
+        result,
+        text,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 255),
         2
     )
 
@@ -294,6 +325,12 @@ def main():
     print("Camera opened successfully.")
     print("Press Q to quit.")
 
+    # Used to calculate FPS.
+    previous_time = time.perf_counter()
+
+    # Start at zero and gradually smooth the measurement.
+    smoothed_fps = 0.0
+
     while True:
 
         # ----------------------------------------------------
@@ -307,7 +344,7 @@ def main():
             break
 
         # ----------------------------------------------------
-        # Detection
+        # Run detection methods
         # ----------------------------------------------------
 
         canny = detect_canny(frame)
@@ -317,12 +354,42 @@ def main():
         least_squares = detect_least_squares(frame)
 
         # ----------------------------------------------------
-        # Labels
+        # Calculate FPS
+        # ----------------------------------------------------
+
+        current_time = time.perf_counter()
+
+        elapsed_time = current_time - previous_time
+
+        previous_time = current_time
+
+        if elapsed_time > 0:
+
+            current_fps = 1.0 / elapsed_time
+
+            # Exponential smoothing prevents the displayed
+            # FPS value from jumping dramatically every frame.
+            if smoothed_fps == 0:
+                smoothed_fps = current_fps
+            else:
+                smoothed_fps = (
+                    0.90 * smoothed_fps
+                    + 0.10 * current_fps
+                )
+
+        # ----------------------------------------------------
+        # Add labels
         # ----------------------------------------------------
 
         original_display = add_label(
             frame,
             "Original"
+        )
+
+        # Show FPS on the original panel.
+        original_display = add_fps(
+            original_display,
+            smoothed_fps
         )
 
         canny_display = add_label(
@@ -361,7 +428,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 2 x 2 layout
+        # Create 2 x 2 layout
         # ----------------------------------------------------
 
         top_row = np.hstack(
@@ -386,7 +453,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # Show result
+        # Display
         # ----------------------------------------------------
 
         cv2.imshow(
